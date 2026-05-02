@@ -19,6 +19,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Helper function to convert numpy types to Python native types
+def convert_to_serializable(obj):
+    """Convert numpy types to Python native types for JSON serialization"""
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
 # Load models
 model_attack = joblib.load('model_attack.pkl')
 scaler = joblib.load('scaler.pkl')
@@ -79,7 +92,7 @@ async def predict(input_data: PredictionInput):
         
         # Get attack probability
         attack_prob = model_attack.predict_proba(features_scaled)[0][1]
-        attack_likely = attack_prob >= 0.4
+        attack_likely = bool(attack_prob >= 0.4)  # Convert to Python bool
         
         # Calculate risk score (0-100)
         risk_score = int(attack_prob * 100)
@@ -109,13 +122,13 @@ async def predict(input_data: PredictionInput):
         # Get top triggers (features with highest values)
         feature_values = dict(zip(TOP_FEATURES, features[0]))
         sorted_triggers = sorted(feature_values.items(), key=lambda x: x[1], reverse=True)[:3]
-        top_triggers = [{"feature": f, "weight": v/10} for f, v in sorted_triggers]
+        top_triggers = [{"feature": f, "weight": float(v/10)} for f, v in sorted_triggers]  # Convert to float
         
         # Return response matching Flutter's expected format
         response = {
             "risk_score": risk_score,
             "attack_likely": attack_likely,
-            "attack_prob": attack_prob,
+            "attack_prob": float(attack_prob),  # Convert to float
             "warning_level": warning_level,
             "warning_message": warning_message,
             "severity": severity,
@@ -124,6 +137,9 @@ async def predict(input_data: PredictionInput):
             "top_triggers": top_triggers,
             "timestamp": datetime.now().isoformat()
         }
+        
+        # Convert any remaining numpy types to Python native types
+        response = {k: convert_to_serializable(v) for k, v in response.items()}
         
         return response
         
