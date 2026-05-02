@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 import numpy as np
 import joblib
 import json
@@ -19,17 +19,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Helper function to convert numpy types to Python native types
-def convert_to_serializable(obj):
+# Strong helper function to convert ANY numpy type to Python native
+def convert_to_serializable(obj: Any) -> Any:
     """Convert numpy types to Python native types for JSON serialization"""
-    if isinstance(obj, np.bool_):
+    if isinstance(obj, (np.bool_, np.bool)):
         return bool(obj)
-    if isinstance(obj, np.integer):
+    if isinstance(obj, (np.int_, np.int8, np.int16, np.int32, np.int64)):
         return int(obj)
-    if isinstance(obj, np.floating):
+    if isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
         return float(obj)
     if isinstance(obj, np.ndarray):
         return obj.tolist()
+    if isinstance(obj, dict):
+        return {convert_to_serializable(k): convert_to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [convert_to_serializable(item) for item in obj]
     return obj
 
 # Load models
@@ -92,7 +96,7 @@ async def predict(input_data: PredictionInput):
         
         # Get attack probability
         attack_prob = model_attack.predict_proba(features_scaled)[0][1]
-        attack_likely = bool(attack_prob >= 0.4)  # Convert to Python bool
+        attack_likely = bool(attack_prob >= 0.4)  # Convert to Python bool immediately
         
         # Calculate risk score (0-100)
         risk_score = int(attack_prob * 100)
@@ -122,13 +126,13 @@ async def predict(input_data: PredictionInput):
         # Get top triggers (features with highest values)
         feature_values = dict(zip(TOP_FEATURES, features[0]))
         sorted_triggers = sorted(feature_values.items(), key=lambda x: x[1], reverse=True)[:3]
-        top_triggers = [{"feature": f, "weight": float(v/10)} for f, v in sorted_triggers]  # Convert to float
+        top_triggers = [{"feature": f, "weight": float(v/10)} for f, v in sorted_triggers]
         
-        # Return response matching Flutter's expected format
+        # Create response dictionary
         response = {
             "risk_score": risk_score,
             "attack_likely": attack_likely,
-            "attack_prob": float(attack_prob),  # Convert to float
+            "attack_prob": float(attack_prob),
             "warning_level": warning_level,
             "warning_message": warning_message,
             "severity": severity,
@@ -138,12 +142,13 @@ async def predict(input_data: PredictionInput):
             "timestamp": datetime.now().isoformat()
         }
         
-        # Convert any remaining numpy types to Python native types
-        response = {k: convert_to_serializable(v) for k, v in response.items()}
+        # Convert ALL numpy types to Python native types recursively
+        response = convert_to_serializable(response)
         
         return response
         
     except Exception as e:
+        print(f"Error in predict: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_relief_tips(relief, severity):
