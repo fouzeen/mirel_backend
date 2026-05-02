@@ -19,17 +19,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Strong helper function to convert ANY numpy type to Python native
+# Strong helper function to convert ANY numpy type to Python native (NumPy 2.0 compatible)
 def convert_to_serializable(obj: Any) -> Any:
     """Convert numpy types to Python native types for JSON serialization"""
-    if isinstance(obj, (np.bool_, np.bool)):
+    # Handle numpy 2.0 types - check by type name string to avoid import errors
+    type_name = type(obj).__name__
+    
+    # Boolean types
+    if type_name in ('bool_', 'bool'):
         return bool(obj)
-    if isinstance(obj, (np.int_, np.int8, np.int16, np.int32, np.int64)):
+    # Integer types
+    if type_name in ('int_', 'int8', 'int16', 'int32', 'int64', 'integer'):
         return int(obj)
-    if isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+    # Float types
+    if type_name in ('float_', 'float16', 'float32', 'float64', 'floating'):
         return float(obj)
-    if isinstance(obj, np.ndarray):
+    # Array types
+    if type_name == 'ndarray':
         return obj.tolist()
+    
+    # Recursive handling
     if isinstance(obj, dict):
         return {convert_to_serializable(k): convert_to_serializable(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -79,24 +88,25 @@ async def predict(input_data: PredictionInput):
     try:
         # Convert to numpy array with correct order
         features = np.array([[
-            input_data.Stress_Level,
-            input_data.Sleep_Hours,
-            input_data.Water_Intake_L,
-            input_data.Air_Quality_Index,
-            input_data.Screen_Time_Hours,
-            input_data.Sleep_Quality,
-            input_data.Depression_Level,
-            input_data.Anxiety_Level,
-            input_data.Caffeine_Intake,
-            input_data.Skipped_Meals
+            float(input_data.Stress_Level),
+            float(input_data.Sleep_Hours),
+            float(input_data.Water_Intake_L),
+            float(input_data.Air_Quality_Index),
+            float(input_data.Screen_Time_Hours),
+            float(input_data.Sleep_Quality),
+            float(input_data.Depression_Level),
+            float(input_data.Anxiety_Level),
+            float(input_data.Caffeine_Intake),
+            float(input_data.Skipped_Meals)
         ]])
         
         # Scale features
         features_scaled = scaler.transform(features)
         
-        # Get attack probability
-        attack_prob = model_attack.predict_proba(features_scaled)[0][1]
-        attack_likely = bool(attack_prob >= 0.4)  # Convert to Python bool immediately
+        # Get attack probability - convert to float immediately
+        attack_prob_array = model_attack.predict_proba(features_scaled)[0]
+        attack_prob = float(attack_prob_array[1])
+        attack_likely = attack_prob >= 0.4
         
         # Calculate risk score (0-100)
         risk_score = int(attack_prob * 100)
@@ -126,29 +136,32 @@ async def predict(input_data: PredictionInput):
         # Get top triggers (features with highest values)
         feature_values = dict(zip(TOP_FEATURES, features[0]))
         sorted_triggers = sorted(feature_values.items(), key=lambda x: x[1], reverse=True)[:3]
-        top_triggers = [{"feature": f, "weight": float(v/10)} for f, v in sorted_triggers]
+        top_triggers = [{"feature": str(f), "weight": float(v/10)} for f, v in sorted_triggers]
         
-        # Create response dictionary
+        # Create response dictionary with all Python native types
         response = {
             "risk_score": risk_score,
             "attack_likely": attack_likely,
-            "attack_prob": float(attack_prob),
+            "attack_prob": attack_prob,
             "warning_level": warning_level,
             "warning_message": warning_message,
             "severity": severity,
-            "relief": relief,
+            "relief": str(relief),
             "relief_tips": relief_tips,
             "top_triggers": top_triggers,
             "timestamp": datetime.now().isoformat()
         }
         
-        # Convert ALL numpy types to Python native types recursively
+        # Final conversion to ensure no numpy types remain
         response = convert_to_serializable(response)
         
         return response
         
     except Exception as e:
         print(f"Error in predict: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_relief_tips(relief, severity):
@@ -163,3 +176,8 @@ def get_relief_tips(relief, severity):
         "Rest": ["Rest in a comfortable position", "Avoid bright lights", "Stay hydrated"]
     }
     return tips_map.get(relief, tips_map["Rest"])
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
