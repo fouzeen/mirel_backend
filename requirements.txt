@@ -2,7 +2,7 @@ fastapi
 uvicorn
 scikit-learn==1.6.1
 pandas
-numpy==1.26.4
+numpy==2.0.2
 joblib
 python-multipart
  
