@@ -1,0 +1,32 @@
+{
+  "features": [
+    "Stress_Level",
+    "Sleep_Hours",
+    "Water_Intake_L",
+    "Air_Quality_Index",
+    "Screen_Time_Hours",
+    "Sleep_Quality",
+    "Depression_Level",
+    "Anxiety_Level",
+    "Caffeine_Intake",
+    "Skipped_Meals"
+  ],
+  "target": "Migraine_Attack",
+  "attack_accuracy": 0.91,
+  "attack_roc_auc": 0.981,
+  "severity_classes": [
+    "Mild",
+    "Moderate",
+    "Severe"
+  ],
+  "relief_classes": [
+    "Cold Compress",
+    "Dark Room",
+    "Hydration",
+    "Medication",
+    "Meditation",
+    "Rest",
+    "Sleep"
+  ],
+  "version": "2.0"
+}
